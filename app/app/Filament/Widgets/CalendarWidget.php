@@ -18,53 +18,67 @@ class CalendarWidget extends FullCalendarWidget
         return auth()->check() && auth()->user()->hasRole('colaborador');
     }
 
+    /**
+     * 🔹 Buscar eventos da base de dados para mostrar no calendário
+     */
     public function fetchEvents(array $fetchInfo): array
-    {
-        $ferias = Ferias::query()
-            ->whereBetween('data_inicio', [$fetchInfo['start'], $fetchInfo['end']])
-            ->where('user_id', auth()->id())
-            ->get()
-            ->map(fn (Ferias $ferias) => [
-                'id' => $ferias->id,
-                'title' => "Férias de {$ferias->user->name}",
-                'start' => $ferias->data_inicio,
-                'end' => $ferias->data_fim,
-                'color' => match ($ferias->status) {
-                    'aprovado' => 'green',
-                    'pendente' => 'orange',
-                    'rejeitado' => 'red',
-                },
-            ]);
+{
+    $ferias = Ferias::query()
+        ->whereBetween('data_inicio', [$fetchInfo['start'], $fetchInfo['end']])
+        ->where('user_id', auth()->id())
+        ->get()
+        ->map(fn (Ferias $ferias) => [
+            'id' => (string) $ferias->id,
+            'title' => "Férias de {$ferias->user->primeiro_nome} {$ferias->user->ultimo_nome}",
+            'start' => $ferias->data_inicio,
+            'end' => Carbon::parse($ferias->data_fim)->addDay()->format('Y-m-d'),
+            'color' => match ($ferias->status) {
+                'aprovado' => 'green',
+                'pendente' => 'orange',
+                'rejeitado' => 'red',
+            },
+        ]);
 
-        $eventos = Evento::query()
-            ->whereBetween('data_inicio', [$fetchInfo['start'], $fetchInfo['end']])
-            ->get()
-            ->map(fn (Evento $evento) => [
-                'id' => 'evento-'.$evento->id,
-                'title' => $evento->nome,
-                'start' => $evento->data_inicio,
-                'end' => $evento->data_fim,
-                'color' => $evento->tipo === 'feriado' ? 'red' : 'blue',
-                'display' => 'background',
-            ]);
+    $eventos = Evento::query()
+        ->whereBetween('data_inicio', [$fetchInfo['start'], $fetchInfo['end']])
+        ->get()
+        ->map(fn (Evento $evento) => [
+            'id' => 'evento-' . (string) $evento->id, // 🔹 Evita erro de getKey() em array
+            'title' => $evento->nome,
+            'start' => $evento->data_inicio,
+            'end' => $evento->data_fim,
+            'color' => $evento->tipo === 'feriado' ? 'red' : 'blue',
+            'display' => 'background',
+        ]);
 
-        return $ferias->merge($eventos)->all();
-    }
+    return collect($ferias)->merge($eventos)->all(); // 🔹 Garante que estamos a trabalhar com coleções do Laravel
+}
 
+
+    /**
+     * 🔹 Definir ações no cabeçalho do calendário (botão "Marcar Férias")
+     */
     protected function headerActions(): array
     {
         return [
             CreateAction::make()
                 ->model(Ferias::class)
                 ->label('Marcar Férias')
+                ->modalHeading('Marcar dias de Férias')
                 ->mountUsing(
                     function (Forms\Form $form, array $arguments) {
                         $start = Carbon::parse($arguments['start'] ?? now());
                         $end = Carbon::parse($arguments['end'] ?? now()->addDays(1));
 
+                        // Se o dia selecionado for inválido, ajusta para o próximo dia útil
+                        if ($this->isInvalidDate($start)) {
+                            $start = $this->adjustToWorkday($start);
+                            $end = $this->adjustToWorkday($start->copy()->addDays(1));
+                        }
+
                         $form->fill([
-                            'data_inicio' => $this->adjustToWorkday($start),
-                            'data_fim' => $this->adjustToWorkday($end),
+                            'data_inicio' => $start->format('Y-m-d'),
+                            'data_fim' => $end->format('Y-m-d'),
                         ]);
                     }
                 )
@@ -72,17 +86,18 @@ class CalendarWidget extends FullCalendarWidget
                     Forms\Components\DatePicker::make('data_inicio')
                         ->required()
                         ->label('Data de Início')
-                        ->minDate(now())
+                        ->native(false)
+                        ->locale('pt')
+                        ->minDate(now()) 
                         ->disabledDates(fn () => $this->getDisabledDates()),
 
                     Forms\Components\DatePicker::make('data_fim')
                         ->required()
                         ->label('Data de Fim')
-                        ->minDate(now())
-                        ->disabledDates(fn () => $this->getDisabledDates())
-                        ->afterStateUpdated(function ($state, $set) {
-                            $set('data_inicio', min($state, $state));
-                        }),
+                        ->native(false)
+                        ->locale('pt')
+                        ->minDate(now()) 
+                        ->disabledDates(fn () => $this->getDisabledDates()),
                 ])
                 ->mutateFormDataUsing(function (array $data): array {
                     $this->validatePeriod($data['data_inicio'], $data['data_fim']);
@@ -94,31 +109,39 @@ class CalendarWidget extends FullCalendarWidget
         ];
     }
 
-    /** 🔹 Ajustar data para o próximo dia útil */
-    private function adjustToWorkday(Carbon $date): Carbon
-    {
-        while ($this->isInvalidDate($date)) {
-            $date->addDay();
-        }
-        return $date;
-    }
-
+    /**
+     * 🔹 Obter lista de dias bloqueados (fins de semana, feriados e férias já marcadas)
+     */
     private function getDisabledDates(): array
     {
         $invalidDates = [];
-        $start = Carbon::now();
-        $end = Carbon::now()->addMonths(12);
 
-        while ($start->lte($end)) {
-            if ($this->isInvalidDate($start)) {
-                $invalidDates[] = $start->format('Y-m-d');
+        // Bloqueia fins de semana e feriados
+        $current = now();
+        $endDate = now()->addYear();
+        while ($current <= $endDate) {
+            if ($this->isInvalidDate($current)) {
+                $invalidDates[] = $current->format('Y-m-d');
             }
-            $start->addDay();
+            $current->addDay();
         }
 
-        return $invalidDates;
+        // Bloqueia dias de férias já marcados (pendentes ou aprovados)
+        $feriasMarcadas = Ferias::where('user_id', Auth::id())
+            ->whereIn('status', ['pendente', 'aprovado'])
+            ->get()
+            ->flatMap(fn ($ferias) =>
+                collect(Carbon::parse($ferias->data_inicio)
+                    ->daysUntil(Carbon::parse($ferias->data_fim))
+                )->map->format('Y-m-d')
+            )->toArray();
+
+        return array_merge($invalidDates, $feriasMarcadas);
     }
 
+    /**
+     * 🔹 Verifica se um dia é inválido (fim de semana ou feriado)
+     */
     private function isInvalidDate(Carbon $date): bool
     {
         if ($date->isWeekend()) {
@@ -135,6 +158,20 @@ class CalendarWidget extends FullCalendarWidget
         return false;
     }
 
+    /**
+     * 🔹 Ajusta automaticamente para o próximo dia útil disponível
+     */
+    private function adjustToWorkday(Carbon $date): Carbon
+    {
+        while ($this->isInvalidDate($date)) {
+            $date->addDay();
+        }
+        return $date;
+    }
+
+    /**
+     * 🔹 Valida o período de férias antes de ser criado
+     */
     private function validatePeriod(string $start, string $end): void
     {
         $startDate = Carbon::parse($start);
@@ -155,24 +192,6 @@ class CalendarWidget extends FullCalendarWidget
                 ]);
             }
             $current->addDay();
-        }
-
-        $existing = Ferias::where('user_id', Auth::id())
-            ->where(function ($query) use ($startDate, $endDate) {
-                $query->whereBetween('data_inicio', [$startDate, $endDate])
-                    ->orWhereBetween('data_fim', [$startDate, $endDate])
-                    ->orWhere(function ($q) use ($startDate, $endDate) {
-                        $q->where('data_inicio', '<', $startDate)
-                            ->where('data_fim', '>', $endDate);
-                    });
-            })
-            ->whereIn('status', ['pendente', 'aprovado'])
-            ->exists();
-
-        if ($existing) {
-            throw ValidationException::withMessages([
-                'data_inicio' => 'Já existe um período de férias marcado neste intervalo',
-            ]);
         }
     }
 }

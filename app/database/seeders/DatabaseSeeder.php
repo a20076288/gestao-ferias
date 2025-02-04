@@ -12,8 +12,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            RolesAndPermissionsSeeder::class, //  seeder de Roles e Permissões
-            UserSeeder::class, // criar os utilizadores automaticamente
+            RolesAndPermissionsSeeder::class, // Seeder de Roles e Permissões
+            UserSeeder::class, // Criar utilizadores automaticamente
+            EventosSeeder::class, // ✅ Inserir feriados nacionais e eventos da empresa
         ]);
     }
 }

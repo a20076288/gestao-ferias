@@ -21,59 +21,49 @@ class FeriasResource extends Resource
     protected static ?string $model = Ferias::class;
     protected static ?string $navigationIcon = 'heroicon-o-calendar';
 
-    /**
-     * 🔹 Apenas Superadmins e Administradores podem ver este recurso
-     */
     public static function canViewAny(): bool
     {
         return Auth::user() && in_array(Auth::user()->cargo, [CargoEnum::ADMINISTRACAO, CargoEnum::DIRECAO]);
     }
 
-    /**
-     * 🔹 Apenas Superadmins e Administradores podem criar pedidos diretamente aqui
-     */
     public static function canCreate(): bool
     {
         return self::canViewAny();
     }
 
-    /**
-     * 🔹 Apenas Superadmins e Administradores podem editar
-     */
     public static function canEdit(Model $record): bool
     {
         return self::canViewAny();
     }
 
-    /**
-     * 🔹 Apenas Superadmins e Administradores podem apagar
-     */
     public static function canDelete(Model $record): bool
     {
         return self::canViewAny();
     }
 
-    /**
-     * 🔹 Apenas Superadmins e Administradores podem apagar em massa
-     */
     public static function canDeleteAny(): bool
     {
         return self::canViewAny();
     }
 
-    /**
-     * 🔹 Formulário para Criar/Editar Férias
-     */
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
                 Forms\Components\DatePicker::make('data_inicio')
-                    ->required(),
-                
+                    ->required()
+                    ->native(false)
+                    ->locale('pt')
+                    ->label('Data de Início')
+                    ->minDate(now()),
+
                 Forms\Components\DatePicker::make('data_fim')
-                    ->required(),
-                
+                    ->required()
+                    ->native(false)
+                    ->locale('pt')
+                    ->label('Data de Fim')
+                    ->minDate(now()),
+
                 Forms\Components\Select::make('status')
                     ->options([
                         'pendente' => 'Pendente',
@@ -85,9 +75,6 @@ class FeriasResource extends Resource
             ]);
     }
 
-    /**
-     * 🔹 Tabela para Listar Férias
-     */
     public static function table(Table $table): Table
     {
         return $table
@@ -127,9 +114,6 @@ class FeriasResource extends Resource
             ]);
     }
 
-    /**
-     * 🔹 Definição das Páginas do Recurso
-     */
     public static function getPages(): array
     {
         return [
