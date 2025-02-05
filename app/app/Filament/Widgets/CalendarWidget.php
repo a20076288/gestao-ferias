@@ -13,10 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 class CalendarWidget extends FullCalendarWidget
 {
-    public static function canView(): bool
-    {
-        return auth()->check() && auth()->user()->hasRole('colaborador');
-    }
+   public static function canView(): bool
+{
+    return auth()->check();
+}
 
     /**
      * 🔹 Buscar eventos da base de dados para mostrar no calendário
@@ -140,23 +140,25 @@ class CalendarWidget extends FullCalendarWidget
     }
 
     /**
-     * 🔹 Verifica se um dia é inválido (fim de semana ou feriado)
+     * 🔹 Verifica se um dia é inválido (fim de semana, feriado ou evento)
      */
     private function isInvalidDate(Carbon $date): bool
-    {
-        if ($date->isWeekend()) {
-            return true;
-        }
-
-        if (Evento::where('tipo', 'feriado')
-            ->whereDate('data_inicio', '<=', $date)
-            ->whereDate('data_fim', '>=', $date)
-            ->exists()) {
-            return true;
-        }
-
-        return false;
+{
+    // Bloqueia fins de semana
+    if ($date->isWeekend()) {
+        return true;
     }
+
+    // Bloqueia feriados e eventos de empresa
+    if (Evento::whereIn('tipo', ['feriado', 'evento']) // ✅ Agora verifica eventos e feriados
+        ->whereDate('data_inicio', '<=', $date)
+        ->whereDate('data_fim', '>=', $date)
+        ->exists()) {
+        return true;
+    }
+
+    return false;
+}
 
     /**
      * 🔹 Ajusta automaticamente para o próximo dia útil disponível

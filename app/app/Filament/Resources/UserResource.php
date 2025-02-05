@@ -26,42 +26,11 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
 
-    /**
-     * Mostrar a secção apenas para quem tem permissão
-     */
     public static function canViewAny(): bool
     {
         return Filament::auth()->user()->can('manage-users');
     }
 
-    public static function canCreate(): bool
-    {
-        return Filament::auth()->user()->can('manage-users');
-    }
-
-    public static function canEdit(Model $record): bool
-    {
-        return Filament::auth()->user()->can('manage-users');
-    }
-
-    public static function canDelete(Model $record): bool
-    {
-        return Filament::auth()->user()->can('manage-users');
-    }
-
-    public static function canDeleteAny(): bool
-    {
-        return Filament::auth()->user()->can('manage-users');
-    }
-
-    public static function canView(Model $record): bool
-    {
-        return Filament::auth()->user()->can('manage-users');
-    }
-
-    /**
-     * Formulário para Criar/Editar Utilizadores
-     */
     public static function form(Form $form): Form
     {
         return $form
@@ -99,13 +68,12 @@ class UserResource extends Resource
                     ->label('Função na Empresa')
                     ->nullable(),
 
+                // ✅ Correção do campo roles para garantir que está associado corretamente ao relacionamento
                 Select::make('roles')
                     ->label('Role')
-                    ->multiple()
-                    ->options(Role::pluck('name', 'name'))
-                    ->preload()
+                    ->relationship('roles', 'name')
                     ->required()
-                    ->default('colaborador'),
+                    ->default(fn () => Role::where('name', 'colaborador')->first()?->id),
 
                 TextInput::make('password')
                     ->label('Password')
@@ -116,9 +84,6 @@ class UserResource extends Resource
             ]);
     }
 
-    /**
-     * Tabela para Listar Utilizadores
-     */
     public static function table(Table $table): Table
     {
         return $table
@@ -142,9 +107,11 @@ class UserResource extends Resource
                     ->label('Cargo')
                     ->sortable(),
 
+                // ✅ Correção para mostrar os roles corretamente na listagem
                 Tables\Columns\TextColumn::make('roles.name')
                     ->label('Role')
-                    ->sortable(),
+                    ->sortable()
+                    ->getStateUsing(fn (User $record) => $record->getRoleNames()->join(', ')),
             ])
             ->actions([
                 EditAction::make()->visible(fn () => Filament::auth()->user()->can('manage-users')),
@@ -155,9 +122,6 @@ class UserResource extends Resource
             ]);
     }
 
-    /**
-     * Definição das Páginas do Filament
-     */
     public static function getPages(): array
     {
         return [
