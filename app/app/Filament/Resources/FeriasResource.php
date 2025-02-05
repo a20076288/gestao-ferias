@@ -6,15 +6,17 @@ use App\Filament\Resources\FeriasResource\Pages;
 use App\Models\Ferias;
 use App\Models\User;
 use App\Models\CargoEnum;
+use App\Models\Departamento; // Adicione esta importação
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Facades\Filament;
+use Filament\Tables\Actions\Action;
 
 class FeriasResource extends Resource
 {
@@ -23,56 +25,32 @@ class FeriasResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user() && in_array(Auth::user()->cargo, [CargoEnum::ADMINISTRACAO, CargoEnum::DIRECAO]);
+        return Auth::user()->hasRole(['superadmin', 'admin']) || Auth::user()->cargo === CargoEnum::DIRECAO;
     }
 
     public static function canCreate(): bool
     {
-        return self::canViewAny();
+        return false;
     }
 
-    public static function canEdit(Model $record): bool
+    public static function getEloquentQuery(): Builder
     {
-        return self::canViewAny();
-    }
+        $query = parent::getEloquentQuery();
+        $user = Auth::user();
 
-    public static function canDelete(Model $record): bool
-    {
-        return self::canViewAny();
-    }
+        if ($user->hasRole(['superadmin', 'admin'])) {
+            return $query;
+        }
 
-    public static function canDeleteAny(): bool
-    {
-        return self::canViewAny();
-    }
+        if ($user->cargo === CargoEnum::DIRECAO) {
+            $colaboradores_ids = User::whereHas('departamentos', function ($q) use ($user) {
+                $q->whereIn('departamento_id', $user->departamentos->pluck('id'));
+            })->pluck('id');
 
-    public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Forms\Components\DatePicker::make('data_inicio')
-                    ->required()
-                    ->native(false)
-                    ->locale('pt')
-                    ->label('Data de Início')
-                    ->minDate(now()),
+            return $query->whereIn('user_id', $colaboradores_ids);
+        }
 
-                Forms\Components\DatePicker::make('data_fim')
-                    ->required()
-                    ->native(false)
-                    ->locale('pt')
-                    ->label('Data de Fim')
-                    ->minDate(now()),
-
-                Forms\Components\Select::make('status')
-                    ->options([
-                        'pendente' => 'Pendente',
-                        'aprovado' => 'Aprovado',
-                        'rejeitado' => 'Rejeitado',
-                    ])
-                    ->default('pendente')
-                    ->visible(fn () => Auth::user()->cargo !== CargoEnum::COLABORADOR),
-            ]);
+        return $query;
     }
 
     public static function table(Table $table): Table
@@ -93,33 +71,91 @@ class FeriasResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\BadgeColumn::make('status')
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'pendente' => 'Pendente',
-                        'aprovado' => 'Aprovado',
-                        'rejeitado' => 'Rejeitado',
-                    })
+                    ->label('Estado')
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
                     ->colors([
                         'pendente' => 'yellow',
                         'aprovado' => 'green',
                         'rejeitado' => 'red',
                     ]),
             ])
-            ->filters([])
+            ->filters([
+                // Filtro por Departamento
+                Tables\Filters\SelectFilter::make('departamento')
+                    ->label('Departamento')
+                    ->options(function () {
+                        $user = Auth::user();
+                        
+                        if ($user->hasRole(['superadmin', 'admin'])) {
+                            return Departamento::all()->pluck('nome', 'id')->toArray();
+                        }
+                        
+                        return $user->departamentos->pluck('nome', 'id')->toArray();
+                    })
+                    ->query(function (Builder $query, $data) {
+                        if (!empty($data['value'])) {
+                            $query->whereHas('user.departamentos', function (Builder $q) use ($data) {
+                                $q->where('departamento_id', $data['value']);
+                            });
+                        }
+                    }),
+
+                // Filtro por Estado
+                Tables\Filters\SelectFilter::make('status')
+                    ->options([
+                        'pendente' => 'Pendente',
+                        'aprovado' => 'Aprovado',
+                        'rejeitado' => 'Rejeitado',
+                    ])
+                    ->label('Estado'),
+
+                // Filtro por Período
+                Tables\Filters\Filter::make('periodo')
+                    ->form([
+                        Forms\Components\DatePicker::make('data_inicio')->label('Data Inicial'),
+                        Forms\Components\DatePicker::make('data_fim')->label('Data Final'),
+                    ])
+                    ->query(function (Builder $query, array $data) {
+                        return $query
+                            ->when(
+                                $data['data_inicio'],
+                                fn ($q) => $q->whereDate('data_inicio', '>=', $data['data_inicio'])
+                            )
+                            ->when(
+                                $data['data_fim'],
+                                fn ($q) => $q->whereDate('data_fim', '<=', $data['data_fim'])
+                            );
+                    })
+            ])
             ->actions([
-                Tables\Actions\EditAction::make()->visible(fn () => Auth::user()->cargo !== CargoEnum::COLABORADOR),
-                Tables\Actions\DeleteAction::make()->visible(fn () => Auth::user()->cargo !== CargoEnum::COLABORADOR),
+                Action::make('Aprovar')
+                    ->label('Aprovar')
+                    ->icon('heroicon-o-check-circle')
+                    ->requiresConfirmation()
+                    ->visible(fn () => Auth::user()->hasRole(['superadmin', 'admin']))
+                    ->action(fn (Ferias $ferias) => $ferias->update(['status' => 'aprovado'])),
+
+                Action::make('Rejeitar')
+                    ->label('Rejeitar')
+                    ->icon('heroicon-o-x-circle')
+                    ->requiresConfirmation()
+                    ->visible(fn () => Auth::user()->hasRole(['superadmin', 'admin']))
+                    ->action(fn (Ferias $ferias) => $ferias->update(['status' => 'rejeitado'])),
+
+                Tables\Actions\DeleteAction::make()
+                    ->label('Eliminar')
+                    ->visible(fn () => Auth::user()->hasRole(['superadmin']) || Auth::user()->cargo === CargoEnum::DIRECAO),
             ])
             ->bulkActions([
-                DeleteBulkAction::make()->visible(fn () => Auth::user()->cargo !== CargoEnum::COLABORADOR),
-            ]);
+                DeleteBulkAction::make()->visible(fn () => Auth::user()->hasRole(['superadmin'])),
+            ])
+            ->defaultSort('data_inicio', 'desc'); // Ordenação padrão por data mais recente
     }
 
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListFerias::route('/'),
-            'create' => Pages\CreateFerias::route('/create'),
-            'edit' => Pages\EditFerias::route('/{record}/edit'),
         ];
     }
 }

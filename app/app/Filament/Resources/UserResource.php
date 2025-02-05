@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
+use App\Models\Departamento;
 use App\Models\CargoEnum;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -13,6 +14,7 @@ use Filament\Tables\Table;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\MultiSelect;
 use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\DeleteBulkAction;
@@ -68,7 +70,12 @@ class UserResource extends Resource
                     ->label('Função na Empresa')
                     ->nullable(),
 
-                // ✅ Correção do campo roles para garantir que está associado corretamente ao relacionamento
+                // ✅ Seleção de múltiplos departamentos
+                MultiSelect::make('departamentos')
+                    ->label('Departamentos')
+                    ->relationship('departamentos', 'nome')
+                    ->required(),
+
                 Select::make('roles')
                     ->label('Role')
                     ->relationship('roles', 'name')
@@ -107,7 +114,13 @@ class UserResource extends Resource
                     ->label('Cargo')
                     ->sortable(),
 
-                // ✅ Correção para mostrar os roles corretamente na listagem
+                // ✅ Mostrar departamentos corretamente
+                Tables\Columns\TextColumn::make('departamentos.nome')
+                    ->label('Departamentos')
+                    ->sortable()
+                    ->getStateUsing(fn (User $record) => implode(', ', $record->departamentos->pluck('nome')->toArray())),
+
+                // ✅ Mostrar roles corretamente
                 Tables\Columns\TextColumn::make('roles.name')
                     ->label('Role')
                     ->sortable()
@@ -120,6 +133,51 @@ class UserResource extends Resource
             ->bulkActions([
                 DeleteBulkAction::make()->visible(fn () => Filament::auth()->user()->can('manage-users')),
             ]);
+    }
+
+    public static function mutateFormDataBeforeCreate(array $data): array
+    {
+        $user = User::create([
+            'primeiro_nome' => $data['primeiro_nome'],
+            'ultimo_nome' => $data['ultimo_nome'],
+            'email' => $data['email'],
+            'data_nascimento' => $data['data_nascimento'] ?? null,
+            'cargo' => $data['cargo'],
+            'funcao' => $data['funcao'] ?? null,
+            'password' => bcrypt($data['password']),
+        ]);
+
+        if (!empty($data['roles'])) {
+            $user->syncRoles($data['roles']);
+        }
+
+        if (!empty($data['departamentos'])) {
+            $user->departamentos()->sync($data['departamentos']); // ✅ Salvar departamentos na BD
+        }
+
+        return $user->toArray();
+    }
+
+    public static function mutateFormDataBeforeSave(array $data, Model $record): array
+    {
+        $record->update([
+            'primeiro_nome' => $data['primeiro_nome'],
+            'ultimo_nome' => $data['ultimo_nome'],
+            'email' => $data['email'],
+            'data_nascimento' => $data['data_nascimento'] ?? null,
+            'cargo' => $data['cargo'],
+            'funcao' => $data['funcao'] ?? null,
+        ]);
+
+        if (!empty($data['roles'])) {
+            $record->syncRoles($data['roles']);
+        }
+
+        if (!empty($data['departamentos'])) {
+            $record->departamentos()->sync($data['departamentos']); // ✅ Atualizar departamentos
+        }
+
+        return $record->toArray();
     }
 
     public static function getPages(): array
