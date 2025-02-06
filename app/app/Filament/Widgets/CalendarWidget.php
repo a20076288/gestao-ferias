@@ -55,6 +55,7 @@ class CalendarWidget extends FullCalendarWidget
 }
 
 
+
     /**
      * 🔹 Definir ações no cabeçalho do calendário (botão "Marcar Férias")
      */
