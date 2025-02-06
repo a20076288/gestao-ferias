@@ -30,7 +30,7 @@ class CalendarWidget extends FullCalendarWidget
         ->map(fn (Ferias $ferias) => [
             'id' => (string) $ferias->id,
             'title' => "Férias de {$ferias->user->primeiro_nome} {$ferias->user->ultimo_nome}",
-            'start' => $ferias->data_inicio,
+            'start' => Carbon::parse($ferias->data_inicio)->format('Y-m-d'), // 🔹 Agora sem horário
             'end' => Carbon::parse($ferias->data_fim)->addDay()->format('Y-m-d'),
             'color' => match ($ferias->status) {
                 'aprovado' => 'green',
@@ -43,15 +43,15 @@ class CalendarWidget extends FullCalendarWidget
         ->whereBetween('data_inicio', [$fetchInfo['start'], $fetchInfo['end']])
         ->get()
         ->map(fn (Evento $evento) => [
-            'id' => 'evento-' . (string) $evento->id, // 🔹 Evita erro de getKey() em array
+            'id' => 'evento-' . (string) $evento->id, 
             'title' => $evento->nome,
-            'start' => $evento->data_inicio,
-            'end' => $evento->data_fim,
+            'start' => Carbon::parse($evento->data_inicio)->format('Y-m-d'), // 🔹 Agora sem horário
+            'end' => Carbon::parse($evento->data_fim)->format('Y-m-d'),
             'color' => $evento->tipo === 'feriado' ? 'red' : 'blue',
             'display' => 'background',
         ]);
 
-    return collect($ferias)->merge($eventos)->all(); // 🔹 Garante que estamos a trabalhar com coleções do Laravel
+    return collect($ferias)->merge($eventos)->all();
 }
 
 

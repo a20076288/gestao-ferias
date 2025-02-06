@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, Notifiable, HasRoles; // 🔹 Mantive tudo igual ao original
 
     protected $fillable = [
         'primeiro_nome',
@@ -48,16 +48,15 @@ class User extends Authenticatable
     }
 
     public function departamentos(): BelongsToMany
-{
-    return $this->belongsToMany(Departamento::class, 'departamento_user');
-}
+    {
+        return $this->belongsToMany(Departamento::class, 'departamento_user');
+    }
 
-/**
- * Verifica se o utilizador é diretor de algum departamento
- */
-public function eDiretor(): bool
-{
-    return Departamento::where('diretor_id', $this->id)->exists();
-}
-
+    /**
+     * Verifica se o utilizador é diretor de algum departamento
+     */
+    public function eDiretor(): bool
+    {
+        return Departamento::where('diretor_id', $this->id)->exists();
+    }
 }
