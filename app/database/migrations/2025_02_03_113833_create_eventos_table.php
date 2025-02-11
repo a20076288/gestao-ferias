@@ -15,6 +15,14 @@ return new class extends Migration {
             $table->date('data_fim');
             $table->timestamps();
         });
+
+        // Criar a tabela pivot para associar eventos a múltiplas empresas
+        Schema::create('empresa_evento', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('empresa_id')->constrained('empresas')->onDelete('cascade');
+            $table->foreignId('evento_id')->constrained('eventos')->onDelete('cascade');
+            $table->timestamps();
+        });
     }
 
     public function down(): void

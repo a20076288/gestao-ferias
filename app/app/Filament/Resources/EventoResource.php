@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\EventoResource\Pages;
 use App\Models\Evento;
+use App\Models\Empresa;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -58,6 +59,15 @@ class EventoResource extends Resource
                     ->locale('pt')
                     ->required()
                     ->helperText('A data final deve ser igual ou posterior à data de início.'),
+
+                // 🔹 Novo campo para associar múltiplas empresas ao evento
+                Forms\Components\Select::make('empresas')
+                    ->label('Empresas')
+                    ->relationship('empresas', 'nome') // Relacionamento com o modelo Empresa
+                    ->multiple() // Permitir múltiplas seleções
+                    ->preload() // Carregar as opções previamente
+                    ->searchable() // Permitir pesquisa por nome
+                    ->required(),
             ]);
     }
 
@@ -88,6 +98,13 @@ class EventoResource extends Resource
                     ->label('Fim')
                     ->sortable()
                     ->date('d/m/Y'),
+
+                // 🔹 Nova coluna para exibir as empresas associadas ao evento
+                Tables\Columns\TextColumn::make('empresas.nome')
+                    ->label('Empresas')
+                    ->sortable()
+                    ->badge()
+                    ->wrap(),
             ])
             ->filters([])
             ->actions([

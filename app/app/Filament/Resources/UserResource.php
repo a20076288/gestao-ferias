@@ -25,12 +25,16 @@ use Filament\Facades\Filament;
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
-
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
+
+    public static function getNavigationLabel(): string
+    {
+        return 'Utilizadores';
+    }
 
     public static function canViewAny(): bool
     {
-        return Filament::auth()->user()->can('manage-users');
+        return Filament::auth()->user()->isSuperadmin();
     }
 
     public static function form(Form $form): Form
@@ -58,11 +62,11 @@ class UserResource extends Resource
                 Select::make('cargo')
                     ->label('Cargo')
                     ->options([
-                        CargoEnum::ADMINISTRACAO->value => 'Administração',
-                        CargoEnum::DIRECAO->value => 'Direção',
-                        CargoEnum::RESPONSAVEL_DEPARTAMENTO->value => 'Responsável Departamento',
-                        CargoEnum::RESPONSAVEL_FUNCAO->value => 'Responsável Função',
-                        CargoEnum::COLABORADOR->value => 'Colaborador',
+                        CargoEnum::ADMINISTRACAO->value               => 'Administração',
+                        CargoEnum::DIRECAO->value                     => 'Direção',
+                        CargoEnum::RESPONSAVEL_DEPARTAMENTO->value     => 'Responsável Departamento',
+                        CargoEnum::RESPONSAVEL_FUNCAO->value           => 'Responsável Função',
+                        CargoEnum::COLABORADOR->value                  => 'Colaborador',
                     ])
                     ->required(),
 
@@ -70,11 +74,11 @@ class UserResource extends Resource
                     ->label('Função na Empresa')
                     ->nullable(),
 
-                // ✅ Seleção de múltiplos departamentos
                 MultiSelect::make('departamentos')
                     ->label('Departamentos')
                     ->relationship('departamentos', 'nome')
-                    ->required(),
+                    ->required()
+                    ->preload(),
 
                 Select::make('roles')
                     ->label('Role')
@@ -86,8 +90,10 @@ class UserResource extends Resource
                     ->label('Password')
                     ->password()
                     ->nullable()
-                    ->dehydrateStateUsing(fn ($state) => !empty($state) ? bcrypt($state) : null)
-                    ->required(fn ($record) => $record === null),
+                    ->dehydrated(fn ($state) => filled($state))
+                    ->dehydrateStateUsing(fn ($state) => bcrypt($state))
+                    ->required(fn ($record) => $record === null)
+                    ->helperText('Se não inserir uma nova password, a password atual do utilizador será mantida.'),
             ]);
     }
 
@@ -114,37 +120,35 @@ class UserResource extends Resource
                     ->label('Cargo')
                     ->sortable(),
 
-                // ✅ Mostrar departamentos corretamente
                 Tables\Columns\TextColumn::make('departamentos.nome')
                     ->label('Departamentos')
                     ->sortable()
                     ->getStateUsing(fn (User $record) => implode(', ', $record->departamentos->pluck('nome')->toArray())),
 
-                // ✅ Mostrar roles corretamente
                 Tables\Columns\TextColumn::make('roles.name')
                     ->label('Role')
                     ->sortable()
                     ->getStateUsing(fn (User $record) => $record->getRoleNames()->join(', ')),
             ])
             ->actions([
-                EditAction::make()->visible(fn () => Filament::auth()->user()->can('manage-users')),
-                DeleteAction::make()->visible(fn () => Filament::auth()->user()->can('manage-users')),
+                EditAction::make()->visible(fn () => Filament::auth()->user()->isSuperadmin()),
+                DeleteAction::make()->visible(fn () => Filament::auth()->user()->isSuperadmin()),
             ])
             ->bulkActions([
-                DeleteBulkAction::make()->visible(fn () => Filament::auth()->user()->can('manage-users')),
+                DeleteBulkAction::make()->visible(fn () => Filament::auth()->user()->isSuperadmin()),
             ]);
     }
 
     public static function mutateFormDataBeforeCreate(array $data): array
     {
         $user = User::create([
-            'primeiro_nome' => $data['primeiro_nome'],
-            'ultimo_nome' => $data['ultimo_nome'],
-            'email' => $data['email'],
+            'primeiro_nome'   => $data['primeiro_nome'],
+            'ultimo_nome'     => $data['ultimo_nome'],
+            'email'           => $data['email'],
             'data_nascimento' => $data['data_nascimento'] ?? null,
-            'cargo' => $data['cargo'],
-            'funcao' => $data['funcao'] ?? null,
-            'password' => bcrypt($data['password']),
+            'cargo'           => $data['cargo'],
+            'funcao'          => $data['funcao'] ?? null,
+            'password'        => bcrypt($data['password']),
         ]);
 
         if (!empty($data['roles'])) {
@@ -152,7 +156,7 @@ class UserResource extends Resource
         }
 
         if (!empty($data['departamentos'])) {
-            $user->departamentos()->sync($data['departamentos']); // ✅ Salvar departamentos na BD
+            $user->departamentos()->sync($data['departamentos']);
         }
 
         return $user->toArray();
@@ -160,21 +164,27 @@ class UserResource extends Resource
 
     public static function mutateFormDataBeforeSave(array $data, Model $record): array
     {
-        $record->update([
-            'primeiro_nome' => $data['primeiro_nome'],
-            'ultimo_nome' => $data['ultimo_nome'],
-            'email' => $data['email'],
+        $updateData = [
+            'primeiro_nome'   => $data['primeiro_nome'],
+            'ultimo_nome'     => $data['ultimo_nome'],
+            'email'           => $data['email'],
             'data_nascimento' => $data['data_nascimento'] ?? null,
-            'cargo' => $data['cargo'],
-            'funcao' => $data['funcao'] ?? null,
-        ]);
+            'cargo'           => $data['cargo'],
+            'funcao'          => $data['funcao'] ?? null,
+        ];
+
+        if (!empty($data['password'])) {
+            $updateData['password'] = $data['password'];
+        }
+
+        $record->update($updateData);
 
         if (!empty($data['roles'])) {
             $record->syncRoles($data['roles']);
         }
 
         if (!empty($data['departamentos'])) {
-            $record->departamentos()->sync($data['departamentos']); // ✅ Atualizar departamentos
+            $record->departamentos()->sync($data['departamentos']);
         }
 
         return $record->toArray();
@@ -183,9 +193,9 @@ class UserResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListUsers::route('/'),
+            'index'  => Pages\ListUsers::route('/'),
             'create' => Pages\CreateUser::route('/create'),
-            'edit' => Pages\EditUser::route('/{record}/edit'),
+            'edit'   => Pages\EditUser::route('/{record}/edit'),
         ];
     }
 }

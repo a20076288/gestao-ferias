@@ -14,4 +14,10 @@ class Empresa extends Model
         'nome_social',
         'nif',
     ];
+
+    public function eventos()
+    {
+        return $this->belongsToMany(Evento::class, 'empresa_evento');
+    }
+
 }
