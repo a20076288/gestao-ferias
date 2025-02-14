@@ -60,7 +60,7 @@ class CalendarWidget extends FullCalendarWidget
                 'id'      => 'evento-' . (string) $evento->id,
                 'title'   => $evento->nome,
                 'start'   => Carbon::parse($evento->data_inicio)->format('Y-m-d'),
-                'end'     => Carbon::parse($evento->data_fim)->format('Y-m-d'),
+                'end'     => Carbon::parse($evento->data_fim)->addDay()->format('Y-m-d'),
                 'color'   => $evento->tipo === 'feriado' ? 'red' : 'blue',
                 'display' => 'background',
             ]);
@@ -97,15 +97,21 @@ class CalendarWidget extends FullCalendarWidget
                         ->required()
                         ->label('Data de Início')
                         ->native(false)
-                        ->locale('pt')
+                        ->locale('pt_PT')
                         ->minDate(now())
+                        ->validationMessages([
+                            'after_or_equal' => 'A data deve ser igual ou posterior a :date',
+                        ])
                         ->disabledDates(fn () => $this->getDisabledDates()),
                     Forms\Components\DatePicker::make('data_fim')
                         ->required()
                         ->label('Data de Fim')
                         ->native(false)
-                        ->locale('pt')
+                        ->locale('pt_PT')
                         ->minDate(now())
+                        ->validationMessages([
+                            'after_or_equal' => 'A data deve ser igual ou posterior a :date',
+                        ])
                         ->disabledDates(fn () => $this->getDisabledDates()),
                 ])
                 ->mutateFormDataUsing(function (array $data): array {
