@@ -14,7 +14,7 @@ Antes de iniciar, certifique-se de que possui os seguintes requisitos instalados
 Para obter uma cópia do projeto, abra um terminal e execute o seguinte comando:
 
 ```bash
-git clone https://github.com/a20076288/laravel-gestao-ferias.git
+git clone https://github.com/a20076288/gestao-ferias.git
 cd laravel-gestao-ferias
 ```
 
